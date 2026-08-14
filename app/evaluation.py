@@ -15,6 +15,71 @@ from app.models import SearchFilters
 from app.search import TransactionSearch
 
 
+# Curated examples for the demo UI. The full golden set remains untouched and
+# continues to be available to the API/CLI for engineering evaluation.
+SHOWCASE_CASES: tuple[dict[str, Any], ...] = (
+    {
+        "id": "showcase-delivery-high-value",
+        "label": "Categoria + valor",
+        "scenario": "Delivery de comida acima de R$ 100",
+        "query": "Delivery de comida acima de 100 reais",
+        "filters": {},
+        "expected_status": 200,
+        "relevant_ids": ["tx_0005", "tx_0007", "tx_0201", "tx_0202", "tx_0239", "tx_0249"],
+    },
+    {
+        "id": "showcase-carrefour-typo",
+        "label": "Tolerância a typo",
+        "scenario": "Carrefur deve encontrar Carrefour",
+        "query": "compras no Carrefur",
+        "filters": {},
+        "expected_status": 200,
+        "relevant_ids": ["tx_0003", "tx_0004", "tx_0015", "tx_0129", "tx_0143", "tx_0161", "tx_0237"],
+    },
+    {
+        "id": "showcase-netflix",
+        "label": "Recorrência",
+        "scenario": "Assinaturas de streaming da Netflix",
+        "query": "Netflix",
+        "filters": {},
+        "expected_status": 200,
+        "relevant_ids": ["tx_0019", "tx_0029", "tx_0042", "tx_0065", "tx_0113", "tx_0149", "tx_0150", "tx_0196"],
+    },
+    {
+        "id": "showcase-uber-filters",
+        "label": "Filtros compostos",
+        "scenario": "Uber em uma data e faixa de valor específicas",
+        "query": "Uber",
+        "filters": {
+            "date_from": "2026-07-10",
+            "date_to": "2026-07-10",
+            "min_amount_brl": 40,
+            "max_amount_brl": 60,
+        },
+        "expected_status": 200,
+        "relevant_ids": ["tx_0241"],
+    },
+    {
+        "id": "showcase-cemig",
+        "label": "Conta essencial",
+        "scenario": "Pagamentos de energia elétrica da Cemig",
+        "query": "Cemig",
+        "filters": {},
+        "expected_status": 200,
+        "relevant_ids": ["tx_0024", "tx_0121", "tx_0138", "tx_0140", "tx_0162", "tx_0193", "tx_0211", "tx_0231"],
+    },
+    {
+        "id": "showcase-empty",
+        "label": "Resposta honesta",
+        "scenario": "Uma consulta fora do período deve retornar vazio",
+        "query": "compras no futuro",
+        "filters": {"date_from": "2030-01-01", "date_to": "2030-01-31"},
+        "expected_status": 200,
+        "relevant_ids": [],
+    },
+)
+
+
 def load_cases(path: Path) -> list[dict[str, Any]]:
     required = {"id", "query", "filters", "expected_status", "relevant_ids"}
     cases: list[dict[str, Any]] = []
@@ -73,6 +138,43 @@ def public_cases(suite_path: Path, tag: str) -> list[dict[str, Any]]:
         for case in load_cases(suite_path)
         if tag in case.get("tags", [])
     ]
+
+
+def showcase_cases(engine: TransactionSearch) -> list[dict[str, Any]]:
+    """Return the six labelled cases shown in the demo UI with ground truth."""
+    rows_by_id = engine.frame.set_index("transaction_id", drop=False)
+    cases: list[dict[str, Any]] = []
+    for case in SHOWCASE_CASES:
+        expected_ids = case["relevant_ids"]
+        missing = set(expected_ids) - set(rows_by_id.index)
+        if missing:
+            raise RuntimeError(
+                "O índice ativo não contém todos os rótulos da demonstração."
+            )
+        transactions = []
+        for transaction_id in expected_ids:
+            row = rows_by_id.loc[transaction_id]
+            transactions.append(
+                {
+                    "transaction_id": str(row.transaction_id),
+                    "merchant": str(row.merchant),
+                    "description": str(row.description),
+                    "amount_brl": float(row.amount_brl),
+                    "category": str(row.category),
+                }
+            )
+        cases.append(
+            {
+                "id": case["id"],
+                "label": case["label"],
+                "scenario": case["scenario"],
+                "query": case["query"],
+                "filters": case["filters"],
+                "expected_status": case["expected_status"],
+                "ground_truth": {"transactions": transactions},
+            }
+        )
+    return cases
 
 
 async def run_quality(

@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from unittest import TestCase
 
+from app.evaluation import SHOWCASE_CASES
 
 EVALUATION_DIR = Path(__file__).resolve().parents[1] / "data" / "evaluation"
 PRODUCTION_CSV = Path(__file__).resolve().parents[1] / "ai_engineer_semantic_transactions.csv"
@@ -53,4 +54,17 @@ class EvaluationAssetsTest(TestCase):
         self.assertTrue(any(case["expected_status"] == 422 for case in cases))
         self.assertTrue(
             all(set(case["relevant_ids"]).issubset(transaction_ids) for case in cases)
+        )
+
+    def test_showcase_has_six_labelled_cases_from_the_production_corpus(self) -> None:
+        with PRODUCTION_CSV.open(encoding="utf-8", newline="") as source:
+            transaction_ids = {record["transaction_id"] for record in csv.DictReader(source)}
+        self.assertEqual(len(SHOWCASE_CASES), 6)
+        self.assertEqual(len({case["id"] for case in SHOWCASE_CASES}), 6)
+        self.assertTrue(all(case["label"] and case["scenario"] for case in SHOWCASE_CASES))
+        self.assertTrue(
+            all(
+                set(case["relevant_ids"]).issubset(transaction_ids)
+                for case in SHOWCASE_CASES
+            )
         )

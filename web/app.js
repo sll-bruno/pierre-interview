@@ -7,6 +7,7 @@ const state = {
   interpretation: null,
   backendAvailable: true,
   evaluationReady: false,
+  showcaseCases: [],
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -20,8 +21,7 @@ const elements = {
   dialog: $("#transactionDialog"), dialogMerchant: $("#dialogMerchant"), dialogContent: $("#dialogContent"),
   toast: $("#toast"), mode: $("#dataMode"), help: $("#helpDialog"),
   searchTab: $("#searchTab"), evaluationTab: $("#evaluationTab"), searchView: $("#searchView"), evaluationView: $("#evaluationView"),
-  evaluationStatus: $("#evaluationStatus"), runQuality: $("#runQuality"), qualityMessage: $("#qualityMessage"), qualityMetrics: $("#qualityMetrics"),
-  runLoad: $("#runLoad"), loadMessage: $("#loadMessage"), loadMetrics: $("#loadMetrics"), loadRequests: $("#loadRequests"), loadConcurrency: $("#loadConcurrency"),
+  evaluationStatus: $("#evaluationStatus"), showcaseCases: $("#showcaseCases"),
 };
 
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -248,16 +248,6 @@ function showToast(message) { elements.toast.textContent = message; elements.toa
 function formatPercent(value) { return value == null ? "—" : `${Math.round(value * 100)}%`; }
 function formatMs(value) { return value == null ? "—" : `${Math.round(value)} ms`; }
 
-function renderMetrics(container, metrics) {
-  container.hidden = false;
-  container.innerHTML = metrics.map(({ label, value, neutral = false }) => `<div class="metric"><span>${escapeHtml(label)}</span><strong class="${neutral ? "neutral" : ""}">${escapeHtml(String(value))}</strong></div>`).join("");
-}
-
-function setRunMessage(element, message, error = false) {
-  element.textContent = message;
-  element.classList.toggle("error", error);
-}
-
 async function responseError(response) {
   try {
     const body = await response.json();
@@ -273,20 +263,24 @@ async function refreshEvaluationStatus() {
     if (!response.ok) throw new Error("Status indisponível");
     const payload = await response.json();
     state.evaluationReady = Boolean(payload.available);
-    elements.runQuality.disabled = !state.evaluationReady;
-    elements.runLoad.disabled = !state.evaluationReady;
     if (state.evaluationReady) {
       elements.evaluationStatus.classList.add("ready");
-      elements.evaluationStatus.textContent = `${payload.case_count} casos rotulados e ${payload.load_case_count} cenários de carga prontos.`;
+      const showcaseResponse = await fetch("/api/evaluation/showcase");
+      if (!showcaseResponse.ok) throw new Error(await responseError(showcaseResponse));
+      const showcase = await showcaseResponse.json();
+      state.showcaseCases = showcase.cases;
+      renderShowcaseCases();
+      elements.evaluationStatus.textContent = `${state.showcaseCases.length} casos selecionados para demonstração.`;
     } else {
       elements.evaluationStatus.classList.add("error");
       elements.evaluationStatus.textContent = payload.reason || "Corpus de avaliação indisponível.";
+      elements.showcaseCases.innerHTML = "";
     }
   } catch {
     state.evaluationReady = false;
-    elements.runQuality.disabled = true; elements.runLoad.disabled = true;
     elements.evaluationStatus.classList.add("error");
     elements.evaluationStatus.textContent = "Não foi possível verificar o ambiente de avaliação.";
+    elements.showcaseCases.innerHTML = "";
   }
 }
 
@@ -298,75 +292,58 @@ function switchView(view) {
   if (isEvaluation) refreshEvaluationStatus();
 }
 
-async function runQuality() {
-  if (!state.evaluationReady) return;
-  elements.runQuality.disabled = true; elements.qualityMetrics.hidden = true;
-  setRunMessage(elements.qualityMessage, "Rodando os casos rotulados…");
-  try {
-    const response = await fetch("/api/evaluation/quality", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ top_k: 10 }) });
-    if (!response.ok) throw new Error(await responseError(response));
-    const report = await response.json(); const summary = report.summary;
-    renderMetrics(elements.qualityMetrics, [
-      { label: "Aprovação", value: formatPercent(summary.exact_pass_rate) },
-      { label: "Recall @10", value: formatPercent(summary.mean_recall_at_k) },
-      { label: "MRR @10", value: formatPercent(summary.mrr_at_k) },
-      { label: "p95 interno", value: formatMs(summary.latency_ms?.p95), neutral: true },
-      { label: "Casos", value: summary.cases, neutral: true },
-      { label: "Status OK", value: formatPercent(summary.status_pass_rate) },
-    ]);
-    setRunMessage(elements.qualityMessage, `${summary.cases} casos concluídos. Latência medida no motor de busca.`);
-  } catch (error) {
-    setRunMessage(elements.qualityMessage, error.message || "Falha ao rodar a avaliação.", true);
-  } finally { elements.runQuality.disabled = !state.evaluationReady; }
+function showcaseTransactions(transactions) {
+  if (!transactions.length) return '<li class="showcase-empty">Nenhuma transação esperada.</li>';
+  return transactions.map((transaction) => `<li><strong>${escapeHtml(transaction.merchant)}</strong><span>${money.format(transaction.amount_brl)} · ${escapeHtml(transaction.category)}</span></li>`).join("");
 }
 
-function percentile(values, fraction) {
-  if (!values.length) return null;
-  const sorted = [...values].sort((left, right) => left - right);
-  return sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)];
+function renderShowcaseCases() {
+  elements.showcaseCases.innerHTML = state.showcaseCases.map((item) => {
+    const truth = item.ground_truth.transactions;
+    return `<article class="showcase-card" data-showcase-id="${escapeHtml(item.id)}">
+      <div class="showcase-heading"><span class="run-badge">${escapeHtml(item.label)}</span><span class="showcase-count">${truth.length} esperado${truth.length === 1 ? "" : "s"}</span></div>
+      <h2>${escapeHtml(item.scenario)}</h2>
+      <div class="showcase-query"><span>Query</span><code>${escapeHtml(item.query)}</code></div>
+      <div class="showcase-truth"><span>Ground truth</span><ul>${showcaseTransactions(truth)}</ul></div>
+      <button class="apply-button showcase-run" type="button" data-run-showcase="${escapeHtml(item.id)}">Rodar modelo ao vivo</button>
+      <div class="showcase-output" hidden></div>
+    </article>`;
+  }).join("");
 }
 
-async function runLoad() {
-  if (!state.evaluationReady) return;
-  const requests = Math.max(1, Math.min(5000, Number(elements.loadRequests.value) || 100));
-  const concurrency = Math.max(1, Math.min(100, Number(elements.loadConcurrency.value) || 10));
-  elements.loadRequests.value = requests; elements.loadConcurrency.value = concurrency;
-  elements.runLoad.disabled = true; elements.loadMetrics.hidden = true;
-  setRunMessage(elements.loadMessage, `Enviando ${requests} requisições com concorrência ${concurrency}…`);
+function setsEqual(left, right) {
+  return left.size === right.size && [...left].every((value) => right.has(value));
+}
+
+function renderShowcaseOutput(card, item, response, status) {
+  const output = card.querySelector(".showcase-output");
+  const expected = new Set(item.ground_truth.transactions.map((transaction) => transaction.transaction_id));
+  const found = new Set((response?.transactions || []).map((transaction) => transaction.transaction_id));
+  const exact = status === item.expected_status && setsEqual(expected, found);
+  const matched = [...expected].filter((id) => found.has(id)).length;
+  const results = response?.transactions || [];
+  const explanations = [...new Set(results.map((result) => result.explanation).filter(Boolean))];
+  output.hidden = false;
+  output.innerHTML = `<div class="showcase-verdict ${exact ? "pass" : "review"}"><strong>${exact ? "Confere com o ground truth" : "Revisar resultado"}</strong><span>${matched}/${expected.size} transações esperadas encontradas</span></div>
+    <div class="showcase-result-block"><span>Saída ao vivo</span><ul>${showcaseTransactions(results)}</ul></div>
+    <div class="showcase-reason"><span>Justificativa do modelo</span><p>${escapeHtml(explanations.join(" ") || "Não houve resultados para justificar.")}</p></div>`;
+}
+
+async function runShowcaseCase(id) {
+  const item = state.showcaseCases.find((candidate) => candidate.id === id);
+  const card = elements.showcaseCases.querySelector(`[data-showcase-id="${CSS.escape(id)}"]`);
+  if (!item || !card) return;
+  const button = card.querySelector("[data-run-showcase]");
+  button.disabled = true; button.textContent = "Rodando ao vivo…";
   try {
-    const casesResponse = await fetch("/api/evaluation/cases?tag=load");
-    if (!casesResponse.ok) throw new Error(await responseError(casesResponse));
-    const { cases } = await casesResponse.json();
-    if (!cases.length) throw new Error("Não há cenários de carga disponíveis.");
-    const workload = Array.from({ length: requests }, (_, index) => cases[index % cases.length]);
-    const latencies = []; const statuses = {}; let cursor = 0;
-    const started = performance.now();
-    const worker = async () => {
-      while (cursor < workload.length) {
-        const current = workload[cursor++]; const requestStarted = performance.now();
-        let status = 0;
-        try {
-          const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: current.query, filters: current.filters }) });
-          status = response.status; await response.text();
-        } catch { status = 0; }
-        latencies.push(performance.now() - requestStarted); statuses[status] = (statuses[status] || 0) + 1;
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(concurrency, requests) }, worker));
-    const elapsed = performance.now() - started;
-    const failed = latencies.length - (statuses[200] || 0);
-    renderMetrics(elements.loadMetrics, [
-      { label: "Throughput", value: `${(requests / (elapsed / 1000)).toFixed(1)} req/s` },
-      { label: "p50 HTTP", value: formatMs(percentile(latencies, .50)), neutral: true },
-      { label: "p95 HTTP", value: formatMs(percentile(latencies, .95)), neutral: true },
-      { label: "p99 HTTP", value: formatMs(percentile(latencies, .99)), neutral: true },
-      { label: "Falhas", value: formatPercent(failed / requests) },
-      { label: "Sucessos", value: `${statuses[200] || 0}/${requests}`, neutral: true },
-    ]);
-    setRunMessage(elements.loadMessage, `${requests} requisições concluídas em ${(elapsed / 1000).toFixed(2)} s.`);
-  } catch (error) {
-    setRunMessage(elements.loadMessage, error.message || "Falha ao rodar a carga.", true);
-  } finally { elements.runLoad.disabled = !state.evaluationReady; }
+    const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: item.query, filters: item.filters }) });
+    const payload = response.ok ? await response.json() : null;
+    renderShowcaseOutput(card, item, payload, response.status);
+  } catch {
+    renderShowcaseOutput(card, item, null, 0);
+  } finally {
+    button.disabled = false; button.textContent = "Rodar modelo ao vivo";
+  }
 }
 
 elements.form.addEventListener("submit", (event) => { event.preventDefault(); performSearch(elements.query.value); });
@@ -380,8 +357,7 @@ elements.reset.addEventListener("click", () => { elements.filterPanel.reset(); s
 elements.sort.addEventListener("change", sortAndRenderRows);
 elements.searchTab.addEventListener("click", () => switchView("search"));
 elements.evaluationTab.addEventListener("click", () => switchView("evaluation"));
-elements.runQuality.addEventListener("click", runQuality);
-elements.runLoad.addEventListener("click", runLoad);
+elements.showcaseCases.addEventListener("click", (event) => { const button = event.target.closest("[data-run-showcase]"); if (button) runShowcaseCase(button.dataset.runShowcase); });
 elements.body.addEventListener("click", (event) => { const button = event.target.closest("[data-id]"); if (button) openTransaction(button.dataset.id); });
 $("#closeDialog").addEventListener("click", () => elements.dialog.close());
 document.querySelectorAll("[data-feedback]").forEach((button) => button.addEventListener("click", () => sendFeedback(button.dataset.feedback === "true")));

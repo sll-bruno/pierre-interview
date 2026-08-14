@@ -9,7 +9,12 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import settings
-from app.evaluation import public_cases, run_quality, status as evaluation_status
+from app.evaluation import (
+    public_cases,
+    run_quality,
+    showcase_cases,
+    status as evaluation_status,
+)
 from app.models import (
     EvaluationRunRequest,
     FeedbackRequest,
@@ -121,6 +126,15 @@ async def get_evaluation_status(request: Request) -> dict:
 async def get_evaluation_cases(request: Request, tag: str = "load") -> dict:
     _evaluation_engine(request)
     return {"cases": public_cases(settings.evaluation_suite, tag)}
+
+
+@app.get("/api/evaluation/showcase")
+async def get_evaluation_showcase(request: Request) -> dict:
+    engine = _evaluation_engine(request)
+    try:
+        return {"cases": showcase_cases(engine)}
+    except RuntimeError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.post("/api/evaluation/quality")

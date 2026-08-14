@@ -169,44 +169,18 @@
       <section id="evaluationView" class="evaluation-view" role="tabpanel" aria-labelledby="evaluationTab" hidden>
         <div class="evaluation-intro">
           <div>
-            <div class="eyebrow"><span class="eyebrow-dot"></span>Validação do sistema</div>
-            <h1>Qualidade e <span>desempenho.</span></h1>
-            <p>Rode o corpus rotulado para conferir relevância, depois pressione a API com uma carga concorrente controlada.</p>
+            <div class="eyebrow"><span class="eyebrow-dot"></span>Validação explicável</div>
+            <h1>Seis casos.<br /><span>Sem caixa-preta.</span></h1>
+            <p>Escolhemos cenários que deixam claro o que o Pierre entendeu, qual era a resposta esperada e por que cada resultado foi retornado.</p>
           </div>
           <div id="evaluationStatus" class="evaluation-status" role="status">Verificando corpus…</div>
         </div>
 
-        <div class="evaluation-grid">
-          <article class="evaluation-card">
-            <div class="evaluation-card-heading">
-              <div><span class="section-kicker">Qualidade</span><h2>Golden set</h2></div>
-              <span class="run-badge">relevância</span>
-            </div>
-            <p>Executa todos os casos rotulados e compara os resultados com as transações esperadas.</p>
-            <button id="runQuality" class="apply-button" type="button" disabled>Rodar avaliação</button>
-            <p id="qualityMessage" class="run-message" aria-live="polite"></p>
-            <div id="qualityMetrics" class="metrics-grid" hidden></div>
-          </article>
-
-          <article class="evaluation-card">
-            <div class="evaluation-card-heading">
-              <div><span class="section-kicker">Desempenho</span><h2>Teste de carga</h2></div>
-              <span class="run-badge blue">HTTP</span>
-            </div>
-            <p>Dispara buscas reais do navegador e mede taxa de erro, throughput e percentis de latência.</p>
-            <div class="load-controls">
-              <label>Requisições <input id="loadRequests" type="number" min="1" max="5000" value="100" /></label>
-              <label>Concorrência <input id="loadConcurrency" type="number" min="1" max="100" value="10" /></label>
-            </div>
-            <button id="runLoad" class="apply-button" type="button" disabled>Rodar carga</button>
-            <p id="loadMessage" class="run-message" aria-live="polite"></p>
-            <div id="loadMetrics" class="metrics-grid" hidden></div>
-          </article>
-        </div>
+        <div id="showcaseCases" class="showcase-grid" aria-live="polite"></div>
 
         <aside class="evaluation-note">
-          <strong>Ambiente de avaliação</strong>
-          <span>Os testes ficam habilitados apenas quando o índice ativo foi gerado com o corpus rotulado. Assim, as métricas nunca misturam a base de demonstração com rótulos de outro conjunto.</span>
+          <strong>Como ler</strong>
+          <span>Ground truth é a resposta rotulada antes do teste. “Rodar modelo ao vivo” consulta o motor que está em produção agora e compara sua saída com esse esperado.</span>
         </aside>
       </section>
     </main>
