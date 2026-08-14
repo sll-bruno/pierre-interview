@@ -263,9 +263,9 @@ class TransactionSearch:
             ]
         )
         scores = (
-            0.55 * raw_scores
-            + 0.30 * enriched_scores
-            + 0.10 * category_scores
+            0.45 * raw_scores
+            + 0.35 * enriched_scores
+            + 0.15 * category_scores
             + 0.05 * merchant_scores
         )
         accepted = scores >= self.config.search_min_score

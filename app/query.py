@@ -152,6 +152,30 @@ class QueryInterpreter:
                 text_format=ParsedQuery,
             )
             parsed = response.output_parsed
-            return fallback if parsed is None else QueryInterpretation(**parsed.model_dump())
+            if parsed is None:
+                return fallback
+            # Numeric and month expressions are easy to parse deterministically.
+            # Prefer that cleaned intent so they cannot pollute the semantic vector.
+            return QueryInterpretation(
+                semantic_intent=(
+                    fallback.semantic_intent
+                    if fallback.evidence
+                    else parsed.semantic_intent
+                ),
+                date_from=fallback.date_from or parsed.date_from,
+                date_to=fallback.date_to or parsed.date_to,
+                min_amount_brl=(
+                    fallback.min_amount_brl
+                    if fallback.min_amount_brl is not None
+                    else parsed.min_amount_brl
+                ),
+                max_amount_brl=(
+                    fallback.max_amount_brl
+                    if fallback.max_amount_brl is not None
+                    else parsed.max_amount_brl
+                ),
+                merchant=parsed.merchant,
+                evidence=list(dict.fromkeys([*fallback.evidence, *parsed.evidence])),
+            )
         except Exception:
             return fallback
