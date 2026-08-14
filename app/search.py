@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from difflib import SequenceMatcher
 import hashlib
 import json
 import re
@@ -52,6 +53,16 @@ VAGUE_QUERIES = {
 def normalize_text(value: str) -> str:
     value = unicodedata.normalize("NFKC", value).casefold().strip()
     return re.sub(r"\s+", " ", value)
+
+
+def merchant_key(value: str) -> str:
+    """Normalize merchant names for accent-insensitive exact/fuzzy matching."""
+    normalized = unicodedata.normalize("NFD", normalize_text(value))
+    return "".join(
+        character
+        for character in normalized
+        if unicodedata.category(character) != "Mn"
+    )
 
 
 def semantic_text(merchant: str, description: str) -> str:
@@ -136,6 +147,37 @@ class TransactionSearch:
         await self.cache.put(normalized, vector)
         return vector
 
+    def _resolve_interpreted_merchant(self, merchant: str | None) -> str | None:
+        """Resolve an explicit merchant from the query without trusting weak guesses."""
+        if not merchant:
+            return None
+        target = merchant_key(merchant)
+        if not target:
+            return None
+        known = {
+            merchant_key(value): str(value)
+            for value in self.frame["merchant"].dropna().unique()
+        }
+        if target in known:
+            return known[target]
+
+        candidate, score = max(
+            (
+                (name, SequenceMatcher(None, target, name).ratio())
+                for name in known
+            ),
+            key=lambda item: item[1],
+        )
+        # A typo such as "carrefur" resolves to Carrefour. Longer phrases such
+        # as "uber eats" do not collapse to the generic merchant "Uber".
+        if (
+            len(target) >= 4
+            and abs(len(target) - len(candidate)) <= 2
+            and score >= 0.86
+        ):
+            return known[candidate]
+        return None
+
     def _candidate_mask(
         self, filters: SearchFilters, interpretation: QueryInterpretation
     ) -> tuple[np.ndarray, AppliedPeriod]:
@@ -175,6 +217,15 @@ class TransactionSearch:
             merchant = re.escape(normalize_text(filters.merchant))
             normalized_merchants = self.frame["merchant"].map(normalize_text)
             mask &= np.asarray(normalized_merchants.str.contains(merchant, regex=True))
+        else:
+            resolved_merchant = self._resolve_interpreted_merchant(
+                interpretation.merchant
+            )
+            if resolved_merchant:
+                mask &= np.asarray(
+                    self.frame["merchant"].map(normalize_text)
+                    == normalize_text(resolved_merchant)
+                )
         return mask, AppliedPeriod(
             date_from=date_from, date_to=date_to, source=source  # type: ignore[arg-type]
         )
