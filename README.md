@@ -80,7 +80,15 @@ transação candidata, o score é:
 + 0,05 × aderência de merchant
 ```
 
-Resultados abaixo de `SEARCH_MIN_SCORE` (padrão: `0.28`) são descartados. Cada
+`SEARCH_MIN_SCORE` é o corte mínimo de relevância: resultados com score abaixo
+dele são descartados. O valor padrão e recomendado é `0.35`, calibrado para que
+consultas por categoria não arrastem uma cauda longa de falsos positivos - por
+exemplo, `corridas de aplicativo` deixa de trazer streaming, telefonia, voos e
+aluguel de carro. O corte não pode subir muito além disso: como o score depende
+da interpretação gerada pelo LLM, que varia entre requisições, valores a partir
+de `0.36` começam a descartar corridas legítimas em algumas execuções. É
+configurável por variável de ambiente, então baixá-lo (por exemplo, `0.28`)
+reverte o comportamento sem novo deploy de código. Cada
 resposta inclui score, decomposição do score, sinais encontrados e uma
 explicação legível - por exemplo, categoria inferida, semelhança da descrição,
 contexto enriquecido e filtros atendidos. Isso torna a ordenação auditável sem
