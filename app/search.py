@@ -98,7 +98,9 @@ class TransactionSearch:
     def __init__(self, config: Settings) -> None:
         self.config = config
         self.client: AsyncOpenAI | None = None
-        self.interpreter = QueryInterpreter(config.query_model)
+        self.interpreter = QueryInterpreter(
+            config.query_model, cache_size=config.query_cache_size
+        )
         self.cache = QueryEmbeddingCache(config.query_cache_size)
         self.frame = self._load(config.embeddings_parquet)
         self.raw_matrix = self._matrix(self.frame, "raw_embedding")

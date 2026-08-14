@@ -1,7 +1,8 @@
 from datetime import date
-from unittest import TestCase
+from types import SimpleNamespace
+from unittest import IsolatedAsyncioTestCase, TestCase
 
-from app.query import fallback_interpretation
+from app.query import ParsedQuery, QueryInterpreter, fallback_interpretation
 
 
 class QueryInterpretationTest(TestCase):
@@ -24,3 +25,77 @@ class QueryInterpretationTest(TestCase):
         )
         self.assertEqual(result.semantic_intent, "Delivery")
         self.assertEqual(result.min_amount_brl, 100)
+
+
+class FakeResponses:
+    def __init__(self, parsed: ParsedQuery) -> None:
+        self._parsed = parsed
+        self.calls: list[dict] = []
+
+    async def parse(self, **kwargs) -> SimpleNamespace:
+        self.calls.append(kwargs)
+        return SimpleNamespace(output_parsed=self._parsed)
+
+
+class FakeClient:
+    def __init__(self, parsed: ParsedQuery) -> None:
+        self.responses = FakeResponses(parsed)
+
+
+class QueryInterpreterTest(IsolatedAsyncioTestCase):
+    async def test_requests_deterministic_sampling(self) -> None:
+        client = FakeClient(
+            ParsedQuery(semantic_intent="corridas de aplicativo", evidence=["corridas"])
+        )
+        interpreter = QueryInterpreter("gpt-4.1-mini", client=client)
+
+        await interpreter.interpret(
+            "corridas de aplicativo", date(2026, 1, 1), date(2026, 8, 9)
+        )
+
+        self.assertEqual(client.responses.calls[0]["temperature"], 0)
+
+    async def test_repeated_query_is_served_from_cache(self) -> None:
+        client = FakeClient(
+            ParsedQuery(semantic_intent="delivery de comida", evidence=["delivery"])
+        )
+        interpreter = QueryInterpreter("gpt-4.1-mini", client=client, cache_size=8)
+        data_min, data_max = date(2026, 1, 1), date(2026, 8, 9)
+
+        first = await interpreter.interpret("delivery", data_min, data_max)
+        second = await interpreter.interpret("delivery", data_min, data_max)
+
+        self.assertEqual(first, second)
+        self.assertEqual(len(client.responses.calls), 1)
+
+    async def test_distinct_queries_are_not_conflated_in_the_cache(self) -> None:
+        client = FakeClient(
+            ParsedQuery(semantic_intent="delivery de comida", evidence=["delivery"])
+        )
+        interpreter = QueryInterpreter("gpt-4.1-mini", client=client, cache_size=8)
+        data_min, data_max = date(2026, 1, 1), date(2026, 8, 9)
+
+        await interpreter.interpret("delivery", data_min, data_max)
+        await interpreter.interpret("corridas de aplicativo", data_min, data_max)
+
+        self.assertEqual(len(client.responses.calls), 2)
+
+    async def test_a_failed_call_is_not_cached_and_is_retried(self) -> None:
+        class FailingResponses:
+            def __init__(self) -> None:
+                self.calls = 0
+
+            async def parse(self, **kwargs):
+                self.calls += 1
+                raise RuntimeError("upstream unavailable")
+
+        client = SimpleNamespace(responses=FailingResponses())
+        interpreter = QueryInterpreter("gpt-4.1-mini", client=client)
+        data_min, data_max = date(2026, 1, 1), date(2026, 8, 9)
+
+        first = await interpreter.interpret("delivery", data_min, data_max)
+        second = await interpreter.interpret("delivery", data_min, data_max)
+
+        self.assertEqual(first.semantic_intent, "delivery")
+        self.assertEqual(second.semantic_intent, "delivery")
+        self.assertEqual(client.responses.calls, 2)
