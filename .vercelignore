@@ -1,0 +1,9 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+data/*.jsonl
+tests/
+scripts/
+BRIEFING_FRONTEND.md
+data/ai_engineer_semantic_transactions.parquet

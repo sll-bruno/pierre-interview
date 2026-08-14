@@ -1,0 +1,13 @@
+[project]
+name = "pierre-semantic-transactions"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.116.1",
+    "numpy==2.3.2",
+    "openai==1.99.9",
+    "pandas==2.3.1",
+    "pyarrow==21.0.0",
+    "python-dotenv==1.1.1",
+    "uvicorn[standard]==0.35.0",
+]
