@@ -4,7 +4,7 @@ Este corpus é independente da base de demonstração. Ele simula lançamentos d
 cartão/conta brasileiros, mas introduz aliases, descrições truncadas, valores
 extremos, recorrência, estornos, valores negativos e transferências ambíguas.
 O arquivo `queries.jsonl` é o *golden set*: cada linha contém a requisição para
-`POST /search`, o status esperado e os IDs relevantes conhecidos.
+`POST /api/search`, o status esperado e os IDs relevantes conhecidos.
 
 Os rótulos de relevância são deliberadamente conservadores: não assumem que
 todo resultado fora da lista é irrelevante. Assim, o avaliador mede recall,

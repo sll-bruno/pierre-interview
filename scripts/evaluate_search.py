@@ -44,7 +44,7 @@ def call_search(base_url: str, case: dict[str, Any], timeout: float) -> tuple[in
         {"query": case["query"], "filters": case["filters"]}, ensure_ascii=False
     ).encode("utf-8")
     request = Request(
-        f"{base_url.rstrip('/')}/search",
+        f"{base_url.rstrip('/')}/api/search",
         data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",
@@ -74,7 +74,7 @@ def percentile(values: list[float], point: float) -> float | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Avalia relevância e latência de /search")
+    parser = argparse.ArgumentParser(description="Avalia relevância e latência de /api/search")
     parser.add_argument("--base-url", required=True, help="Ex.: http://127.0.0.1:8001")
     parser.add_argument("--suite", type=Path, default=DEFAULT_SUITE)
     parser.add_argument("--top-k", type=int, default=10)

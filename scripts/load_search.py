@@ -34,7 +34,7 @@ def load_cases(path: Path, tags: set[str]) -> list[dict[str, Any]]:
 def send(base_url: str, case: dict[str, Any], timeout: float) -> tuple[int, float, str | None]:
     body = json.dumps({"query": case["query"], "filters": case["filters"]}).encode()
     request = Request(
-        f"{base_url.rstrip('/')}/search",
+        f"{base_url.rstrip('/')}/api/search",
         data=body,
         headers={"Content-Type": "application/json"},
         method="POST",
