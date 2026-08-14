@@ -16,7 +16,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-DEFAULT_SUITE = Path("data/evaluation/queries.jsonl")
+DEFAULT_SUITE = Path("data/evaluation/production_queries.jsonl")
 
 
 def load_cases(path: Path, tags: set[str]) -> list[dict[str, Any]]:

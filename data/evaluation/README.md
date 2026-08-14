@@ -1,9 +1,18 @@
 # Corpus de avaliação
 
+`production_queries.jsonl` é o golden set padrão da aplicação: seus rótulos
+referenciam os IDs `tx_*` do índice que vai para produção. Por isso a aba
+**Avaliação** funciona no mesmo deploy, inclusive depois de um cold start; ela
+apenas relê o Parquet versionado e executa as consultas rotuladas.
+
+`queries.jsonl` e `transactions.csv` formam um segundo corpus, independente,
+com IDs `bench_*`. Ele continua sendo usado para regressões isoladas e deve ser
+selecionado explicitamente via `EVALUATION_SUITE` junto dos Parquets de teste.
+
 Este corpus é independente da base de demonstração. Ele simula lançamentos de
 cartão/conta brasileiros, mas introduz aliases, descrições truncadas, valores
 extremos, recorrência, estornos, valores negativos e transferências ambíguas.
-O arquivo `queries.jsonl` é o *golden set*: cada linha contém a requisição para
+O arquivo `queries.jsonl` é o *golden set* isolado: cada linha contém a requisição para
 `POST /api/search`, o status esperado e os IDs relevantes conhecidos.
 
 Os rótulos de relevância são deliberadamente conservadores: não assumem que
@@ -16,6 +25,7 @@ MRR e taxa de acerto, sem reportar uma precisão artificial.
 export TRANSACTIONS_CSV=data/evaluation/transactions.csv
 export TRANSACTIONS_PARQUET=data/evaluation/transactions.parquet
 export EMBEDDINGS_PARQUET=data/evaluation/transactions_embeddings.parquet
+export EVALUATION_SUITE=data/evaluation/queries.jsonl
 .venv/bin/python scripts/index_transactions.py
 .venv/bin/uvicorn app.main:app --port 8001
 ```
@@ -36,6 +46,7 @@ Com a API em execução, rode:
 ```
 
 O resultado agrega `recall@10`, `MRR@10`, taxa de sucesso de casos e latências.
+Sem `--suite`, o script usa o golden set de produção (`production_queries.jsonl`).
 Para preservar um relatório comparável, salve o JSON:
 
 ```bash

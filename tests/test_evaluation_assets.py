@@ -5,6 +5,7 @@ from unittest import TestCase
 
 
 EVALUATION_DIR = Path(__file__).resolve().parents[1] / "data" / "evaluation"
+PRODUCTION_CSV = Path(__file__).resolve().parents[1] / "ai_engineer_semantic_transactions.csv"
 
 
 class EvaluationAssetsTest(TestCase):
@@ -35,4 +36,21 @@ class EvaluationAssetsTest(TestCase):
         self.assertTrue(any(case["expected_status"] == 422 for case in cases))
         self.assertTrue(
             any(case["expected_status"] == 200 and not case["relevant_ids"] for case in cases)
+        )
+
+    def test_production_golden_set_references_deployed_transactions(self) -> None:
+        with PRODUCTION_CSV.open(encoding="utf-8", newline="") as source:
+            transaction_ids = {record["transaction_id"] for record in csv.DictReader(source)}
+        cases = [
+            json.loads(line)
+            for line in (EVALUATION_DIR / "production_queries.jsonl")
+            .read_text(encoding="utf-8")
+            .splitlines()
+            if line.strip()
+        ]
+        self.assertGreaterEqual(len(cases), 12)
+        self.assertTrue(any("load" in case.get("tags", []) for case in cases))
+        self.assertTrue(any(case["expected_status"] == 422 for case in cases))
+        self.assertTrue(
+            all(set(case["relevant_ids"]).issubset(transaction_ids) for case in cases)
         )

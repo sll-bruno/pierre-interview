@@ -47,7 +47,11 @@ class Settings:
     )
     feedback_file: Path = _feedback_path()
     query_cache_size: int = int(os.getenv("QUERY_CACHE_SIZE", "256"))
-    evaluation_suite: Path = _path("EVALUATION_SUITE", "data/evaluation/queries.jsonl")
+    # Production uses the same tx_* corpus as the deployed search index. The
+    # independent bench_* suite remains available through EVALUATION_SUITE.
+    evaluation_suite: Path = _path(
+        "EVALUATION_SUITE", "data/evaluation/production_queries.jsonl"
+    )
 
     @property
     def cors_origins(self) -> list[str]:
