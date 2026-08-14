@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import unicodedata
+from collections import OrderedDict
 from datetime import date
 
 from openai import AsyncOpenAI
@@ -118,20 +120,60 @@ def fallback_interpretation(
     )
 
 
+class _InterpretationCache:
+    """Async LRU cache for parsed queries, mirroring QueryEmbeddingCache in
+    app/search.py. Repeated queries (demo clicks, evaluation/load runs) skip
+    the interpretation call entirely instead of paying for it every time."""
+
+    def __init__(self, capacity: int) -> None:
+        self.capacity = capacity
+        self._values: OrderedDict[str, QueryInterpretation] = OrderedDict()
+        self._lock = asyncio.Lock()
+
+    async def get(self, key: str) -> QueryInterpretation | None:
+        async with self._lock:
+            value = self._values.get(key)
+            if value is not None:
+                self._values.move_to_end(key)
+            return value
+
+    async def put(self, key: str, value: QueryInterpretation) -> None:
+        async with self._lock:
+            self._values[key] = value
+            self._values.move_to_end(key)
+            while len(self._values) > self.capacity:
+                self._values.popitem(last=False)
+
+
 class QueryInterpreter:
-    def __init__(self, model: str, client: AsyncOpenAI | None = None) -> None:
+    def __init__(
+        self,
+        model: str,
+        client: AsyncOpenAI | None = None,
+        cache_size: int = 256,
+    ) -> None:
         self.model = model
         self.client = client
+        self.cache = _InterpretationCache(cache_size)
 
     async def interpret(
         self, query: str, data_min: date, data_max: date
     ) -> QueryInterpretation:
+        cache_key = f"{query}\0{data_min.isoformat()}\0{data_max.isoformat()}"
+        cached = await self.cache.get(cache_key)
+        if cached is not None:
+            return cached
+
         fallback = fallback_interpretation(query, data_min, data_max)
         try:
             if self.client is None:
                 self.client = AsyncOpenAI(timeout=12.0, max_retries=1)
             response = await self.client.responses.parse(
                 model=self.model,
+                # Deterministic sampling: the same query should not drift
+                # across requests into a longer or shorter paraphrase, which
+                # would otherwise move the hybrid score around SEARCH_MIN_SCORE.
+                temperature=0,
                 input=[
                     {"role": "system", "content": QUERY_SYSTEM_PROMPT},
                     {
@@ -153,7 +195,7 @@ class QueryInterpreter:
                 return fallback
             # Numeric and month expressions are easy to parse deterministically.
             # Prefer that cleaned intent so they cannot pollute the semantic vector.
-            return QueryInterpretation(
+            result = QueryInterpretation(
                 semantic_intent=(
                     fallback.semantic_intent
                     if fallback.evidence
@@ -176,3 +218,9 @@ class QueryInterpreter:
             )
         except Exception:
             return fallback
+
+        # Only successful, model-backed interpretations are cached. A failure
+        # falls back to the deterministic parser but should not lock later
+        # retries of the same query into that degraded result.
+        await self.cache.put(cache_key, result)
+        return result
