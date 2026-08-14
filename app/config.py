@@ -30,7 +30,7 @@ class Settings:
     enable_enrichment: bool = os.getenv("ENABLE_ENRICHMENT", "true").casefold() == "true"
     enrichment_model: str = os.getenv("ENRICHMENT_MODEL", "gpt-4.1-mini")
     query_model: str = os.getenv("QUERY_MODEL", "gpt-4.1-mini")
-    search_min_score: float = float(os.getenv("SEARCH_MIN_SCORE", "0.28"))
+    search_min_score: float = float(os.getenv("SEARCH_MIN_SCORE", "0.35"))
     unknown_category_threshold: float = float(
         os.getenv("UNKNOWN_CATEGORY_THRESHOLD", "0.62")
     )
