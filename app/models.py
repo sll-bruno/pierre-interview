@@ -42,7 +42,7 @@ class Transaction(BaseModel):
 class AppliedPeriod(BaseModel):
     date_from: date
     date_to: date
-    source: Literal["request", "query", "all_data"]
+    source: Literal["request", "query", "latest_15_days"]
 
 
 class QueryInterpretation(BaseModel):
@@ -57,15 +57,10 @@ class QueryInterpretation(BaseModel):
 
 class ScoreBreakdown(BaseModel):
     raw_similarity: float
-    enriched_similarity: float
-    category_match: float
-    merchant_match: float
     final_score: float
 
 
 class SearchResult(Transaction):
-    category: str
-    category_confidence: float
     score: float
     score_breakdown: ScoreBreakdown
     matched_signals: list[str]

@@ -27,14 +27,6 @@ def _feedback_path() -> Path:
 @dataclass(frozen=True)
 class Settings:
     model: str = "text-embedding-3-small"
-    enable_enrichment: bool = os.getenv("ENABLE_ENRICHMENT", "true").casefold() == "true"
-    enrichment_model: str = os.getenv("ENRICHMENT_MODEL", "gpt-4.1-mini")
-    query_model: str = os.getenv("QUERY_MODEL", "gpt-4.1-mini")
-    search_min_score: float = float(os.getenv("SEARCH_MIN_SCORE", "0.28"))
-    unknown_category_threshold: float = float(
-        os.getenv("UNKNOWN_CATEGORY_THRESHOLD", "0.62")
-    )
-    enrichment_history_limit: int = int(os.getenv("ENRICHMENT_HISTORY_LIMIT", "12"))
     transactions_csv: Path = _path(
         "TRANSACTIONS_CSV", "ai_engineer_semantic_transactions.csv"
     )

@@ -1,9 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "app/main.py": {
-      "maxDuration": 60,
-      "excludeFiles": "{api/**,tests/**,scripts/**,BRIEFING_FRONTEND.md,data/ai_engineer_semantic_transactions.parquet}"
-    }
-  }
+  "outputDirectory": "web",
+  "functions": { "api/index.py": { "maxDuration": 60 } }
 }

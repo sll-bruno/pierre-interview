@@ -58,12 +58,27 @@ async def frontend() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
 
 
+@app.get("/styles.css", include_in_schema=False)
+async def stylesheet() -> FileResponse:
+    return FileResponse(WEB_DIR / "styles.css")
+
+
+@app.get("/app.js", include_in_schema=False)
+async def script() -> FileResponse:
+    return FileResponse(WEB_DIR / "app.js")
+
+
 @app.get("/ai_engineer_semantic_transactions.csv", include_in_schema=False)
 async def demo_transactions() -> FileResponse:
     return FileResponse(ROOT_DIR / "ai_engineer_semantic_transactions.csv")
 
 
-@app.get("/health")
+@app.get("/api/ai_engineer_semantic_transactions.csv", include_in_schema=False)
+async def api_demo_transactions() -> FileResponse:
+    return FileResponse(ROOT_DIR / "ai_engineer_semantic_transactions.csv")
+
+
+@app.get("/api/health")
 async def health(request: Request) -> dict[str, int | str]:
     engine: TransactionSearch | None = request.app.state.search
     if engine is None:
@@ -71,7 +86,7 @@ async def health(request: Request) -> dict[str, int | str]:
     return {"status": "ok", "transactions": len(engine.frame)}
 
 
-@app.post("/search", response_model=SearchResponse)
+@app.post("/api/search", response_model=SearchResponse)
 async def search(payload: SearchRequest, request: Request) -> SearchResponse:
     engine: TransactionSearch | None = request.app.state.search
     if engine is None:
@@ -79,7 +94,7 @@ async def search(payload: SearchRequest, request: Request) -> SearchResponse:
     return await engine.search(payload.query, payload.filters)
 
 
-@app.post("/feedback", response_model=FeedbackResponse)
+@app.post("/api/feedback", response_model=FeedbackResponse)
 async def feedback(payload: FeedbackRequest, request: Request) -> FeedbackResponse:
     engine: TransactionSearch | None = request.app.state.search
     if engine is None:
@@ -97,18 +112,18 @@ def _evaluation_engine(request: Request) -> TransactionSearch:
     return engine
 
 
-@app.get("/evaluation/status")
+@app.get("/api/evaluation/status")
 async def get_evaluation_status(request: Request) -> dict:
     return evaluation_status(request.app.state.search, settings.evaluation_suite)
 
 
-@app.get("/evaluation/cases")
+@app.get("/api/evaluation/cases")
 async def get_evaluation_cases(request: Request, tag: str = "load") -> dict:
     _evaluation_engine(request)
     return {"cases": public_cases(settings.evaluation_suite, tag)}
 
 
-@app.post("/evaluation/quality")
+@app.post("/api/evaluation/quality")
 async def evaluate_quality(
     payload: EvaluationRunRequest, request: Request
 ) -> dict:

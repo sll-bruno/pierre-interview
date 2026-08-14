@@ -43,7 +43,7 @@ const monthNames = ["janeiro", "fevereiro", "marco", "abril", "maio", "junho", "
 
 async function loadData() {
   try {
-    const response = await fetch("/ai_engineer_semantic_transactions.csv");
+    const response = await fetch("/api/ai_engineer_semantic_transactions.csv");
     if (!response.ok) throw new Error("CSV indisponível");
     state.allTransactions = parseCsv(await response.text());
     elements.mode.textContent = `${state.allTransactions.length} transações prontas`;
@@ -119,7 +119,7 @@ async function performSearch(query, { scroll = true } = {}) {
       merchant: state.filters.merchant || undefined,
     };
     Object.keys(apiFilters).forEach((key) => apiFilters[key] === undefined && delete apiFilters[key]);
-    const response = await fetch("/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: state.query, filters: apiFilters }) });
+    const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: state.query, filters: apiFilters }) });
     if (!response.ok) throw new Error("API indisponível");
     const payload = await response.json();
     state.results = payload.transactions;
@@ -235,7 +235,7 @@ function updateFilterBadge() {
 async function sendFeedback(relevant) {
   if (!state.selected) return;
   try {
-    const response = await fetch("/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: state.query, transaction_id: state.selected.transaction_id, relevant }) });
+    const response = await fetch("/api/feedback", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: state.query, transaction_id: state.selected.transaction_id, relevant }) });
     if (!response.ok) throw new Error("Feedback indisponível");
     elements.dialog.close(); showToast("Valeu. Feedback registrado.");
   } catch {
@@ -269,7 +269,7 @@ async function refreshEvaluationStatus() {
   elements.evaluationStatus.className = "evaluation-status";
   elements.evaluationStatus.textContent = "Verificando corpus…";
   try {
-    const response = await fetch("/evaluation/status");
+    const response = await fetch("/api/evaluation/status");
     if (!response.ok) throw new Error("Status indisponível");
     const payload = await response.json();
     state.evaluationReady = Boolean(payload.available);
@@ -303,7 +303,7 @@ async function runQuality() {
   elements.runQuality.disabled = true; elements.qualityMetrics.hidden = true;
   setRunMessage(elements.qualityMessage, "Rodando os casos rotulados…");
   try {
-    const response = await fetch("/evaluation/quality", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ top_k: 10 }) });
+    const response = await fetch("/api/evaluation/quality", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ top_k: 10 }) });
     if (!response.ok) throw new Error(await responseError(response));
     const report = await response.json(); const summary = report.summary;
     renderMetrics(elements.qualityMetrics, [
@@ -334,7 +334,7 @@ async function runLoad() {
   elements.runLoad.disabled = true; elements.loadMetrics.hidden = true;
   setRunMessage(elements.loadMessage, `Enviando ${requests} requisições com concorrência ${concurrency}…`);
   try {
-    const casesResponse = await fetch("/evaluation/cases?tag=load");
+    const casesResponse = await fetch("/api/evaluation/cases?tag=load");
     if (!casesResponse.ok) throw new Error(await responseError(casesResponse));
     const { cases } = await casesResponse.json();
     if (!cases.length) throw new Error("Não há cenários de carga disponíveis.");
@@ -346,7 +346,7 @@ async function runLoad() {
         const current = workload[cursor++]; const requestStarted = performance.now();
         let status = 0;
         try {
-          const response = await fetch("/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: current.query, filters: current.filters }) });
+          const response = await fetch("/api/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query: current.query, filters: current.filters }) });
           status = response.status; await response.text();
         } catch { status = 0; }
         latencies.push(performance.now() - requestStarted); statuses[status] = (statuses[status] || 0) + 1;
