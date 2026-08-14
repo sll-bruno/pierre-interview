@@ -16,3 +16,11 @@ class QueryInterpretationTest(TestCase):
         self.assertEqual(result.date_from, date(2026, 7, 1))
         self.assertEqual(result.date_to, date(2026, 7, 31))
 
+    def test_removes_currency_word_after_amount(self) -> None:
+        result = fallback_interpretation(
+            "Delivery acima de 100 reais",
+            date(2026, 1, 1),
+            date(2026, 8, 9),
+        )
+        self.assertEqual(result.semantic_intent, "Delivery")
+        self.assertEqual(result.min_amount_brl, 100)

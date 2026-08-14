@@ -78,12 +78,9 @@ def fallback_interpretation(
     del data_min
     normalized = _normalize(query)
     evidence: list[str] = []
-    minimum = re.search(
-        r"(?:acima|mais|maior)(?: de)?\s*(?:r\$)?\s*([\d.,]+)", normalized
-    )
-    maximum = re.search(
-        r"(?:abaixo|menos|menor)(?: de)?\s*(?:r\$)?\s*([\d.,]+)", normalized
-    )
+    amount_pattern = r"(?: de)?\s*(?:r\$)?\s*([\d.,]+)(?:\s*reais?)?"
+    minimum = re.search(r"(?:acima|mais|maior)" + amount_pattern, normalized)
+    maximum = re.search(r"(?:abaixo|menos|menor)" + amount_pattern, normalized)
     min_amount = _number(minimum.group(1)) if minimum else None
     max_amount = _number(maximum.group(1)) if maximum else None
     if minimum:
@@ -103,7 +100,7 @@ def fallback_interpretation(
             break
 
     intent = re.sub(
-        r"(?:acima|mais|maior|abaixo|menos|menor)(?: de)?\s*(?:r\$)?\s*[\d.,]+",
+        r"(?:acima|mais|maior|abaixo|menos|menor)(?: de)?\s*(?:r\$)?\s*[\d.,]+(?:\s*reais?)?",
         " ",
         query,
         flags=re.IGNORECASE,

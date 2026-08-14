@@ -320,6 +320,17 @@ class TransactionSearch:
             + 0.05 * merchant_scores
         )
         accepted = scores >= self.config.search_min_score
+        # When the query names a category exactly (e.g. "delivery"), semantic
+        # similarity alone is too permissive: expensive flights and utilities
+        # can leak into the long tail. Keep only that category's candidates.
+        # Queries without an exact category signal retain the broader semantic
+        # retrieval behavior.
+        if (
+            not interpretation.merchant
+            and category_scores.size
+            and category_scores.max() == 1.0
+        ):
+            accepted &= category_scores > 0
         candidate_indices = candidate_indices[accepted]
         raw_scores = raw_scores[accepted]
         enriched_scores = enriched_scores[accepted]

@@ -52,8 +52,8 @@ class SearchTest(IsolatedAsyncioTestCase):
                         "amount_brl": 200.0,
                         "category": "energia elétrica",
                         "category_confidence": 0.96,
-                        "raw_embedding": [0.0, 1.0],
-                        "enriched_embedding": [0.0, 1.0],
+                        "raw_embedding": [1.0, 0.0],
+                        "enriched_embedding": [1.0, 0.0],
                     },
                 ]
             ).to_parquet(index, index=False)
