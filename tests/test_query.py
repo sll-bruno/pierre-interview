@@ -26,6 +26,50 @@ class QueryInterpretationTest(TestCase):
         self.assertEqual(result.semantic_intent, "Delivery")
         self.assertEqual(result.min_amount_brl, 100)
 
+    def test_combines_amount_and_month_in_one_query(self) -> None:
+        """'Compras acima de R$ 300 em junho' must apply both constraints."""
+        result = fallback_interpretation(
+            "Compras acima de R$ 300 em junho",
+            date(2026, 1, 1),
+            date(2026, 8, 9),
+        )
+        self.assertEqual(result.semantic_intent, "Compras")
+        self.assertEqual(result.min_amount_brl, 300)
+        self.assertEqual(result.date_from, date(2026, 6, 1))
+        self.assertEqual(result.date_to, date(2026, 6, 30))
+        self.assertIsNone(result.aggregation)
+
+    def test_detects_aggregation_and_strips_it_from_the_intent(self) -> None:
+        result = fallback_interpretation(
+            "Quanto paguei em streaming?",
+            date(2026, 1, 1),
+            date(2026, 8, 9),
+        )
+        self.assertEqual(result.aggregation, "sum")
+        self.assertEqual(result.semantic_intent, "streaming")
+
+    def test_detects_other_aggregation_phrasings(self) -> None:
+        for query, intent in [
+            ("qual o total gasto com farmácia", "farmácia"),
+            ("quanto gastei com academia", "academia"),
+            ("soma de cinema", "cinema"),
+        ]:
+            with self.subTest(query=query):
+                result = fallback_interpretation(
+                    query, date(2026, 1, 1), date(2026, 8, 9)
+                )
+                self.assertEqual(result.aggregation, "sum")
+                self.assertEqual(result.semantic_intent, intent)
+
+    def test_plain_query_is_not_treated_as_aggregation(self) -> None:
+        for query in ["corridas de aplicativo", "compras no Carrefour", "viagens"]:
+            with self.subTest(query=query):
+                result = fallback_interpretation(
+                    query, date(2026, 1, 1), date(2026, 8, 9)
+                )
+                self.assertIsNone(result.aggregation)
+                self.assertEqual(result.semantic_intent, query)
+
 
 class FakeResponses:
     def __init__(self, parsed: ParsedQuery) -> None:

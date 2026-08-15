@@ -276,6 +276,31 @@ def main() -> None:
     frame.to_parquet(settings.embeddings_parquet, index=False)
     print(f"Índice salvo em {settings.embeddings_parquet}")
 
+    write_category_embeddings(frame)
+
+
+def write_category_embeddings(frame: pd.DataFrame) -> None:
+    """Embed the category vocabulary once, offline, so search can resolve a
+    query to categories without an extra model call per request."""
+    categories = sorted({str(value) for value in frame["category"]})
+    client = OpenAI(timeout=30.0, max_retries=1)
+    vectors: list[list[float]] = []
+    for start in range(0, len(categories), BATCH_SIZE):
+        batch = categories[start : start + BATCH_SIZE]
+        response = client.embeddings.create(
+            model=settings.model,
+            input=[normalize_text(value) for value in batch],
+            encoding_format="float",
+        )
+        vectors.extend(item.embedding for item in response.data)
+    pd.DataFrame({"category": categories, "embedding": vectors}).to_parquet(
+        settings.category_embeddings_parquet, index=False
+    )
+    print(
+        f"{len(categories)} categorias salvas em "
+        f"{settings.category_embeddings_parquet}"
+    )
+
 
 if __name__ == "__main__":
     main()
