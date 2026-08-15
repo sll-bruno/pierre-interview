@@ -5,6 +5,7 @@ const state = {
   filters: {},
   selected: null,
   interpretation: null,
+  totalAmount: null,
   backendAvailable: true,
   evaluationReady: false,
   showcaseCases: [],
@@ -15,6 +16,7 @@ const elements = {
   form: $("#searchForm"), query: $("#queryInput"), section: $("#resultsSection"),
   chips: $("#interpretationChips"), filterToggle: $("#filterToggle"), filterPanel: $("#filterPanel"),
   filterCount: $("#filterCount"), clearFilters: $("#clearFilters"), total: $("#resultTotal"),
+  totalLabel: $("#resultTotalLabel"),
   count: $("#resultCount"), period: $("#resultPeriod"), subtitle: $("#resultsSubtitle"),
   body: $("#resultsBody"), table: $("#resultsTableWrap"), loading: $("#loadingState"),
   empty: $("#emptyState"), reset: $("#resetSearch"), sort: $("#sortSelect"),
@@ -99,6 +101,8 @@ function interpretationLabels(interpretation) {
   if (interpretation.min_amount_brl != null) labels.push(`Acima de ${money.format(interpretation.min_amount_brl)}`);
   if (interpretation.max_amount_brl != null) labels.push(`Abaixo de ${money.format(interpretation.max_amount_brl)}`);
   if (interpretation.merchant) labels.push(`Estabelecimento: ${interpretation.merchant}`);
+  if (interpretation.categories?.length) labels.push(`Categorias: ${interpretation.categories.join(", ")}`);
+  if (interpretation.aggregation === "sum") labels.push("Pergunta de total");
   return labels;
 }
 
@@ -124,11 +128,13 @@ async function performSearch(query, { scroll = true } = {}) {
     const payload = await response.json();
     state.results = payload.transactions;
     state.interpretation = payload.interpretation;
+    state.totalAmount = payload.total_amount_brl;
     state.backendAvailable = true;
     renderResults(payload.interpretation, payload.period);
   } catch {
     state.backendAvailable = false;
     state.interpretation = inferred;
+    state.totalAmount = null;
     state.results = localSearch(state.query, inferred);
     await new Promise((resolve) => setTimeout(resolve, 420));
     renderResults(inferred, derivePeriod(state.results));
@@ -184,7 +190,11 @@ function renderResults(inferred, period) {
   elements.loading.hidden = true;
   elements.chips.innerHTML = interpretationLabels(inferred).map((label) => `<span class="chip">${escapeHtml(label)}</span>`).join("");
   sortAndRenderRows();
-  const total = state.results.reduce((sum, item) => sum + Number(item.amount_brl), 0);
+  // The API returns the authoritative total; the local sum only covers the
+  // offline demo mode, where there is no backend response to read it from.
+  const total = state.totalAmount ?? state.results.reduce((sum, item) => sum + Number(item.amount_brl), 0);
+  const isAggregation = inferred?.aggregation === "sum";
+  elements.totalLabel.textContent = isAggregation ? "Total pago" : "Total encontrado";
   elements.total.textContent = money.format(total); elements.count.textContent = state.results.length;
   elements.subtitle.textContent = state.results.length === 1 ? "1 resultado para a sua busca" : `${state.results.length} resultados para a sua busca`;
   elements.period.textContent = period ? `${longDate.format(new Date(`${period.date_from}T00:00:00Z`))} — ${longDate.format(new Date(`${period.date_to}T00:00:00Z`))}` : "Nenhum período encontrado";

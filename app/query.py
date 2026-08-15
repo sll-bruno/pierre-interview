@@ -62,6 +62,20 @@ class ParsedQuery(BaseModel):
         return self
 
 
+# Aggregation cues, matched as whole phrases at any position. This is a closed
+# grammatical class ("how much did I ...", "what is the total of ..."), not a
+# list of business terms, so it generalizes to any category the user asks about.
+AGGREGATION_PATTERN = (
+    r"\b(?:"
+    # "qual o total gasto com", "total pago em", "total de"
+    r"(?:qual\s+(?:[oe]\s+|é\s+o\s+)?)?total(?:\s+(?:gasto|pago))?"
+    # "quanto paguei em", "quanto gastei com", "quanto custou"
+    r"|quanto(?:\s+(?:eu\s+)?(?:paguei|gastei|custou|foi|gasto))?"
+    r"|soma"
+    r")(?:\s+(?:de|do|da|dos|das|em|no|na|com))?\b"
+)
+
+
 def _normalize(value: str) -> str:
     value = unicodedata.normalize("NFD", value.casefold())
     return "".join(char for char in value if unicodedata.category(char) != "Mn")
@@ -101,6 +115,11 @@ def fallback_interpretation(
             evidence.append(name)
             break
 
+    aggregation_match = re.search(AGGREGATION_PATTERN, normalized)
+    aggregation = "sum" if aggregation_match else None
+    if aggregation_match:
+        evidence.append(aggregation_match.group(0))
+
     intent = re.sub(
         r"(?:acima|mais|maior|abaixo|menos|menor)(?: de)?\s*(?:r\$)?\s*[\d.,]+(?:\s*reais?)?",
         " ",
@@ -109,13 +128,18 @@ def fallback_interpretation(
     )
     month_pattern = r"\b(?:em|de)?\s*(?:" + "|".join(MONTHS) + r")(?:\s+de)?\s*(?:20\d{2})?\b"
     intent = re.sub(month_pattern, " ", intent, flags=re.IGNORECASE)
-    intent = " ".join(intent.split()).strip(" ,") or query.strip()
+    # The aggregation verb describes what to do with the results, not what to
+    # retrieve; keeping it would pull the query vector toward unrelated wording.
+    intent = re.sub(AGGREGATION_PATTERN, " ", intent, flags=re.IGNORECASE)
+    intent = re.sub(r"^\s*(?:em|com|de|no|na|nos|nas)\b", " ", intent, flags=re.IGNORECASE)
+    intent = " ".join(intent.split()).strip(" ,?!.") or query.strip()
     return QueryInterpretation(
         semantic_intent=intent,
         date_from=date_from,
         date_to=date_to,
         min_amount_brl=min_amount,
         max_amount_brl=max_amount,
+        aggregation=aggregation,
         evidence=evidence,
     )
 
@@ -214,6 +238,9 @@ class QueryInterpreter:
                     else parsed.max_amount_brl
                 ),
                 merchant=parsed.merchant,
+                # Aggregation is decided only by the deterministic parser: it is
+                # a closed grammatical class and must not depend on the model.
+                aggregation=fallback.aggregation,
                 evidence=list(dict.fromkeys([*fallback.evidence, *parsed.evidence])),
             )
         except Exception:

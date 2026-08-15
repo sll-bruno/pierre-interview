@@ -52,6 +52,11 @@ class QueryInterpretation(BaseModel):
     min_amount_brl: float | None = None
     max_amount_brl: float | None = None
     merchant: str | None = None
+    # "sum" when the query asks for a total ("quanto paguei em streaming?").
+    aggregation: Literal["sum"] | None = None
+    # Categories the query resolved to; empty when the query is broad and
+    # results were not restricted to any category.
+    categories: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
 
 
@@ -79,6 +84,10 @@ class SearchResponse(BaseModel):
     interpretation: QueryInterpretation
     transactions: list[SearchResult]
     period: AppliedPeriod
+    # Sum of amount_brl over the returned transactions. Always present so the
+    # client never has to re-derive it; it is the answer when the query asked
+    # for a total (interpretation.aggregation == "sum").
+    total_amount_brl: float = 0.0
 
 
 class FeedbackRequest(BaseModel):

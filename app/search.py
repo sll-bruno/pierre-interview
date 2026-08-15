@@ -105,6 +105,9 @@ class TransactionSearch:
         self.frame = self._load(config.embeddings_parquet)
         self.raw_matrix = self._matrix(self.frame, "raw_embedding")
         self.enriched_matrix = self._matrix(self.frame, "enriched_embedding")
+        self.categories, self.category_matrix = self._load_categories(
+            config.category_embeddings_parquet
+        )
 
     @staticmethod
     def _load(path: Path) -> pd.DataFrame:
@@ -120,6 +123,43 @@ class TransactionSearch:
             raise RuntimeError("O índice de transações está vazio")
         frame["date"] = pd.to_datetime(frame["date"], errors="raise").dt.date
         return frame.reset_index(drop=True)
+
+    def _load_categories(self, path: Path) -> tuple[list[str], np.ndarray | None]:
+        """Load the embedded category vocabulary used to resolve a query to
+        categories. Absent or stale artifacts disable gating instead of failing
+        the whole index, so an older deploy keeps serving searches."""
+        if not path.exists():
+            return [], None
+        frame = pd.read_parquet(path)
+        if frame.empty or not {"category", "embedding"}.issubset(frame.columns):
+            return [], None
+        indexed = set(self.frame["category"].astype(str))
+        frame = frame[frame["category"].astype(str).isin(indexed)]
+        if frame.empty:
+            return [], None
+        matrix = np.asarray(frame["embedding"].tolist(), dtype=np.float32)
+        norms = np.linalg.norm(matrix, axis=1, keepdims=True)
+        if np.any(norms == 0):
+            return [], None
+        return frame["category"].astype(str).tolist(), matrix / norms
+
+    def _resolve_categories(self, intent_vector: np.ndarray) -> list[str]:
+        """Categories the query is about, or [] when it is too broad to gate.
+
+        Input is the embedded semantic intent; output is every category whose
+        cosine similarity reaches category_gate_floor and stays within
+        category_gate_ratio of the best one. A broad intent such as "compras"
+        stays below the floor and returns [], preserving open retrieval."""
+        if self.category_matrix is None:
+            return []
+        similarities = self.category_matrix @ intent_vector
+        best = float(similarities.max())
+        if best < self.config.category_gate_floor:
+            return []
+        selected = np.flatnonzero(
+            similarities >= best * self.config.category_gate_ratio
+        )
+        return [self.categories[index] for index in selected]
 
     @staticmethod
     def _matrix(frame: pd.DataFrame, column: str) -> np.ndarray:
@@ -254,7 +294,9 @@ class TransactionSearch:
         category = str(getattr(row, "category"))
         if breakdown.merchant_match:
             signals.append(f"estabelecimento: {merchant}")
-        if breakdown.category_match:
+        if interpretation.categories:
+            signals.append(f"categoria resolvida pela consulta: {category}")
+        elif breakdown.category_match:
             signals.append(f"categoria inferida: {category}")
         if breakdown.raw_similarity >= 0.35:
             signals.append("descrição original semanticamente semelhante")
@@ -302,6 +344,18 @@ class TransactionSearch:
         if interpretation.merchant:
             embedding_query += f" | estabelecimento: {interpretation.merchant}"
         query_vector = await self._embed_query(embedding_query)
+
+        # An explicit merchant is already a hard filter, so category gating adds
+        # nothing and could contradict it ("compras no Carrefour" must not be
+        # narrowed to the supermarket category before the merchant filter runs).
+        # Without a merchant, embedding_query is the intent itself, so the gate
+        # reuses query_vector and costs no extra embedding call.
+        resolved_categories: list[str] = []
+        if not interpretation.merchant and not filters.merchant:
+            resolved_categories = self._resolve_categories(query_vector)
+        interpretation = interpretation.model_copy(
+            update={"categories": resolved_categories}
+        )
         raw_scores = self.raw_matrix[candidate_indices] @ query_vector
         enriched_scores = self.enriched_matrix[candidate_indices] @ query_vector
         categories = self.frame.iloc[candidate_indices]["category"].astype(str)
@@ -321,18 +375,19 @@ class TransactionSearch:
             + 0.15 * category_scores
             + 0.05 * merchant_scores
         )
-        accepted = scores >= self.config.search_min_score
-        # When the query names a category exactly (e.g. "delivery"), semantic
-        # similarity alone is too permissive: expensive flights and utilities
-        # can leak into the long tail. Keep only that category's candidates.
-        # Queries without an exact category signal retain the broader semantic
-        # retrieval behavior.
-        if (
-            not interpretation.merchant
-            and category_scores.size
-            and category_scores.max() == 1.0
-        ):
-            accepted &= category_scores > 0
+        if resolved_categories:
+            # Precision for category queries comes from this gate, not from the
+            # score cutoff: unrelated categories cannot leak in regardless of
+            # how their embeddings happen to score. Membership already
+            # establishes relevance, so the cutoff is not applied on top of it
+            # -- it would truncate the category arbitrarily and, for an
+            # aggregation query, make the returned total incomplete. The score
+            # still orders the results.
+            accepted = np.isin(categories.to_numpy(), resolved_categories)
+        else:
+            # Broad queries keep open semantic retrieval, where the cutoff is
+            # the only defense against an unbounded long tail.
+            accepted = scores >= self.config.search_min_score
         candidate_indices = candidate_indices[accepted]
         raw_scores = raw_scores[accepted]
         enriched_scores = enriched_scores[accepted]
@@ -378,6 +433,9 @@ class TransactionSearch:
             interpretation=interpretation,
             transactions=transactions,
             period=period,
+            total_amount_brl=round(
+                sum(transaction.amount_brl for transaction in transactions), 2
+            ),
         )
 
     def record_feedback(self, query: str, transaction_id: str, relevant: bool) -> None:
